@@ -3,6 +3,12 @@ import {getPostId} from './lib/utils.js';
 import {downloadPostComments} from './lib/fetch-comments.js';
 import {formatForClaude} from './lib/format-prompt.js';
 import fs from 'fs';
+import path from 'path';
+import {fileURLToPath} from 'url';
+
+// Get the directory name of the current module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -10,8 +16,9 @@ const port = process.env.PORT || 3000;
 // Parse JSON request bodies
 app.use(express.json());
 
-// Read MCP config
-const mcpConfig = JSON.parse(fs.readFileSync('./mcp.json', 'utf8'));
+// Read MCP config using absolute path
+const mcpConfigPath = path.join(__dirname, 'mcp.json');
+const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
 
 // Root endpoint - responds to the MCP protocol initialization
 app.get('/', (req, res) => {
@@ -68,8 +75,8 @@ app.post('/api/summarize', async (req, res) => {
 // JSON-RPC endpoint for MCP protocol
 app.post('/', async (req, res) => {
     const rpcRequest = req.body;
-    console.log('[info] [hn-companion] Received RPC request:', JSON.stringify(rpcRequest));
-    
+    console.log(`[info] [hn-companion] Received RPC request: ${JSON.stringify(rpcRequest)}`);
+
     if (rpcRequest.method === 'initialize') {
         // Handle initialize method
         return res.json({
@@ -83,12 +90,11 @@ app.post('/', async (req, res) => {
                 }
             }
         });
-    } 
-    else if (rpcRequest.method === 'invoke') {
+    } else if (rpcRequest.method === 'invoke') {
         // Handle invoke method for summarize endpoint
         try {
-            const { endpoint, params } = rpcRequest.params;
-            
+            const {endpoint, params} = rpcRequest.params;
+
             if (endpoint !== 'summarize') {
                 return res.json({
                     jsonrpc: '2.0',
@@ -99,8 +105,8 @@ app.post('/', async (req, res) => {
                     }
                 });
             }
-            
-            const { input } = params;
+
+            const {input} = params;
             if (!input) {
                 return res.json({
                     jsonrpc: '2.0',
@@ -123,13 +129,17 @@ app.post('/', async (req, res) => {
                     }
                 });
             }
-            
+
+            console.log(`[info] [hn-companion] Processing HN post ID: ${postId}`);
+
             // Download and process comments
-            const { post, postComments } = await downloadPostComments(postId);
-            
+            const {post, postComments} = await downloadPostComments(postId);
+
+            console.log(`[info] [hn-companion] Downloaded post "${post.title}" with ${postComments.size} comments`);
+
             // Format data for Claude
             const formattedData = formatForClaude(post, postComments);
-            
+
             return res.json({
                 jsonrpc: '2.0',
                 id: rpcRequest.id,
@@ -150,7 +160,7 @@ app.post('/', async (req, res) => {
             });
         }
     }
-    
+
     // Return error for unknown methods
     res.json({
         jsonrpc: '2.0',
