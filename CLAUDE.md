@@ -11,6 +11,14 @@
   - `fetch-comments.js`: HN data retrieval
   - `format-prompt.js`: Claude prompt generation
   - `utils.js`: Utility functions
+- MCP configuration: `mcp.json`
+
+## MCP Protocol
+- The server supports JSON-RPC 2.0 for MCP communication
+- Main endpoints:
+  - `POST /`: JSON-RPC endpoint for initialize and invoke methods
+  - `POST /api/summarize`: Legacy REST endpoint for direct API calls
+- Implementation follows the Model Context Protocol specification
 
 ## Code Style
 - **Type**: ES Modules (import/export)
