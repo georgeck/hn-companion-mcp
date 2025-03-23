@@ -17,14 +17,19 @@
             "description": "A Hacker News post ID or URL"
           }
         },
-        "required": ["input"]
+        "required": [
+          "input"
+        ]
       },
       "output": {
         "type": "object",
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["success", "error"]
+            "enum": [
+              "success",
+              "error"
+            ]
           },
           "data": {
             "type": "object",

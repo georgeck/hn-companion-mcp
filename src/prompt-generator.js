@@ -1,10 +1,10 @@
 /**
  * Generate a system prompt for Claude to summarize Hacker News discussions
- * 
+ *
  * @returns {string} The system prompt text
  */
 export function generateSystemPrompt() {
-  return `
+    return `
 You are an AI assistant specialized in analyzing and summarizing Hacker News discussions. 
 Your goal is to help users quickly understand the key discussions and insights from Hacker News threads without having to read through lengthy comment sections. 
 A discussion consists of threaded comments where each comment can have child comments (replies) nested underneath it, forming interconnected conversation branches. 
@@ -92,20 +92,20 @@ Brief summary of the overall discussion in 2-3 sentences - adjust based on compl
 
 /**
  * Generate a user prompt for Claude to summarize the post
- * 
+ *
  * @param {Object} post - The post data from the API
  * @param {Map} comments - The formatted comments map
  * @returns {string} The user prompt text
  */
 export function generateUserPrompt(post, comments) {
-  // Format all comments
-  let formattedComments = '';
-  comments.forEach(comment => {
-    formattedComments += comment.formattedText + '\n';
-  });
-  
-  // Create the user prompt
-  return `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given. 
+    // Format all comments
+    let formattedComments = '';
+    comments.forEach(comment => {
+        formattedComments += comment.formattedText + '\n';
+    });
+
+    // Create the user prompt
+    return `Provide a concise and insightful summary of the following Hacker News discussion, as per the guidelines you've been given. 
 The goal is to help someone quickly grasp the main discussion points and key perspectives without reading all comments.
 Please focus on extracting the main themes, significant viewpoints, and high-quality contributions.
 The post title and comments are separated by three dashed lines:
