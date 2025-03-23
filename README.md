@@ -85,6 +85,8 @@ Response:
 
 This MCP is designed to prepare data for Claude to summarize. When a user asks Claude to summarize a Hacker News discussion, Claude can call this MCP to get the formatted data and then generate a summary based on the provided system and user prompts.
 
+
+
 ## License
 
 MIT
