@@ -83,8 +83,16 @@ Response:
 
 ## Integration with Claude
 
-This MCP is designed to prepare data for Claude to summarize. When a user asks Claude to summarize a Hacker News discussion, Claude can call this MCP to get the formatted data and then generate a summary based on the provided system and user prompts.
+This MCP is designed to prepare data for Claude to summarize. When a user asks Claude to summarize a Hacker News discussion, 
+Claude can call this MCP to get the formatted data and then generate a summary based on the provided system and user prompts.
 
+```json
+"hn-companion": {
+      "command": "node",
+      "args": ["<full path to src>/hn-companion-mcp/server.js"]
+    }
+  }
+```
 
 
 ## License
