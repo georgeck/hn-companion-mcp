@@ -5,13 +5,14 @@ import {formatForClaude} from './lib/format-prompt.js';
 import fs from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'url';
+import http from 'http';
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Initialize express app
 const app = express();
-const port = process.env.PORT || 3000;
 
 // Parse JSON request bodies
 app.use(express.json());
@@ -20,88 +21,81 @@ app.use(express.json());
 const mcpConfigPath = path.join(__dirname, 'mcp.json');
 const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
 
-// Root endpoint - responds to the MCP protocol initialization
-app.get('/', (req, res) => {
-    res.json({
-        status: 'ok',
-        message: 'HN Companion MCP is running',
-        endpoints: {
-            '/api/summarize': 'POST - Summarize a Hacker News post by providing an input parameter'
-        }
-    });
-});
+// Handle stdout/stderr pipe when running under MCP
+const isRunningUnderMCP = process.env.MCP_SERVER_NAME;
+if (isRunningUnderMCP) {
+    console.log = (...args) => process.stdout.write(JSON.stringify({
+        jsonrpc: "2.0", method: "log", params: {message: args.join(' ')}
+    }) + '\\n');
+    console.error = (...args) => process.stderr.write(args.join(' ') + '\\n');
+}
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.json({status: 'ok'});
-});
+// Separate handlers for the MCP protocol routes vs. the REST API routes
+const handleRESTRequest = async (req, res) => {
+    // Regular REST API routes
+    if (req.path === '/health') {
+        return res.json({status: 'ok'});
+    }
 
-// MCP endpoint for Hacker News summarization
-app.post('/api/summarize', async (req, res) => {
-    try {
-        const {input} = req.body;
+    if (req.path === '/api/summarize' && req.method === 'POST') {
+        try {
+            const {input} = req.body;
 
-        if (!input) {
-            return res.status(400).json({error: 'Missing input parameter'});
-        }
+            if (!input) {
+                return res.status(400).json({error: 'Missing input parameter'});
+            }
 
-        const postId = getPostId(input);
+            const postId = getPostId(input);
 
-        if (!postId) {
-            return res.status(400).json({
-                error: 'Invalid input. Please provide a valid Hacker News post ID or URL'
+            if (!postId) {
+                return res.status(400).json({
+                    error: 'Invalid input. Please provide a valid Hacker News post ID or URL'
+                });
+            }
+
+            // Download and process comments
+            const {post, postComments} = await downloadPostComments(postId);
+
+            // Format data for Claude
+            const formattedData = formatForClaude(post, postComments);
+
+            return res.json({
+                status: 'success', data: formattedData
+            });
+        } catch (error) {
+            console.error(`Error processing REST request: ${error.message}`);
+            return res.status(500).json({
+                error: 'Failed to process request', message: error.message
             });
         }
-
-        // Download and process comments
-        const {post, postComments} = await downloadPostComments(postId);
-
-        // Format data for Claude
-        const formattedData = formatForClaude(post, postComments);
-
-        res.json({
-            status: 'success',
-            data: formattedData
-        });
-    } catch (error) {
-        console.error('Error processing request:', error);
-        res.status(500).json({
-            error: 'Failed to process request',
-            message: error.message
-        });
     }
-});
 
-// JSON-RPC endpoint for MCP protocol
-app.post('/', async (req, res) => {
-    const rpcRequest = req.body;
-    console.log(`[info] [hn-companion] Received RPC request: ${JSON.stringify(rpcRequest)}`);
+    // Default route for REST API
+    return res.status(404).json({error: 'Not found'});
+};
 
-    if (rpcRequest.method === 'initialize') {
-        // Handle initialize method
-        return res.json({
-            jsonrpc: '2.0',
-            id: rpcRequest.id,
-            result: {
-                capabilities: {},
-                serverInfo: {
-                    name: mcpConfig.name,
-                    version: mcpConfig.version
+const handleMCPRequest = async (req, res) => {
+    try {
+        const rpcRequest = req.body;
+        console.error(`Received RPC request: ${JSON.stringify(rpcRequest)}`);
+
+        if (rpcRequest.method === 'initialize') {
+            // Handle initialize method
+            return res.json({
+                jsonrpc: '2.0', id: rpcRequest.id, result: {
+                    capabilities: {}, serverInfo: {
+                        name: mcpConfig.name, version: mcpConfig.version
+                    }
                 }
-            }
-        });
-    } else if (rpcRequest.method === 'invoke') {
-        // Handle invoke method for summarize endpoint
-        try {
+            });
+        } else if (rpcRequest.method === 'invoke') {
+            // Handle invoke method for summarize endpoint
             const {endpoint, params} = rpcRequest.params;
 
             if (endpoint !== 'summarize') {
                 return res.json({
-                    jsonrpc: '2.0',
-                    id: rpcRequest.id,
-                    error: {
-                        code: -32601,
-                        message: `Endpoint '${endpoint}' not found`
+                    jsonrpc: '2.0', id: rpcRequest.id, error: {
+                        code: -32601, message: `Endpoint '${endpoint}' not found`
                     }
                 });
             }
@@ -109,70 +103,136 @@ app.post('/', async (req, res) => {
             const {input} = params;
             if (!input) {
                 return res.json({
-                    jsonrpc: '2.0',
-                    id: rpcRequest.id,
-                    error: {
-                        code: -32602,
-                        message: 'Missing required parameter: input'
-                    }
-                });
-            }
-            
-            const postId = getPostId(input);
-            if (!postId) {
-                return res.json({
-                    jsonrpc: '2.0',
-                    id: rpcRequest.id,
-                    error: {
-                        code: -32602,
-                        message: 'Invalid input. Please provide a valid Hacker News post ID or URL'
+                    jsonrpc: '2.0', id: rpcRequest.id, error: {
+                        code: -32602, message: 'Missing required parameter: input'
                     }
                 });
             }
 
-            console.log(`[info] [hn-companion] Processing HN post ID: ${postId}`);
+            const postId = getPostId(input);
+            if (!postId) {
+                return res.json({
+                    jsonrpc: '2.0', id: rpcRequest.id, error: {
+                        code: -32602, message: 'Invalid input. Please provide a valid Hacker News post ID or URL'
+                    }
+                });
+            }
+
+            console.error(`Processing HN post ID: ${postId}`);
 
             // Download and process comments
             const {post, postComments} = await downloadPostComments(postId);
 
-            console.log(`[info] [hn-companion] Downloaded post "${post.title}" with ${postComments.size} comments`);
+            console.error(`Downloaded post "${post.title}" with ${postComments.size} comments`);
 
             // Format data for Claude
             const formattedData = formatForClaude(post, postComments);
 
             return res.json({
-                jsonrpc: '2.0',
-                id: rpcRequest.id,
-                result: {
-                    status: 'success',
-                    data: formattedData
-                }
-            });
-        } catch (error) {
-            console.error('[error] [hn-companion] Error processing invoke request:', error);
-            return res.json({
-                jsonrpc: '2.0',
-                id: rpcRequest.id,
-                error: {
-                    code: -32603,
-                    message: `Internal error: ${error.message}`
-                }
+                jsonrpc: '2.0', id: rpcRequest.id, result: formattedData
             });
         }
-    }
 
-    // Return error for unknown methods
-    res.json({
-        jsonrpc: '2.0',
-        id: rpcRequest.id || null,
-        error: {
-            code: -32601,
-            message: 'Method not found'
-        }
+        // Return error for unknown methods
+        return res.json({
+            jsonrpc: '2.0', id: rpcRequest.id || null, error: {
+                code: -32601, message: 'Method not found'
+            }
+        });
+    } catch (error) {
+        console.error(`Error processing MCP request: ${error.message}`);
+        return res.json({
+            jsonrpc: '2.0', id: req.body?.id || null, error: {
+                code: -32603, message: `Internal error: ${error.message}`
+            }
+        });
+    }
+};
+
+// Route handler based on content type and headers
+app.use((req, res, next) => {
+    // Check if this is an MCP request (JSON-RPC)
+    const isMCPRequest = req.headers['content-type'] === 'application/json' && (req.path === '/' || req.path === '/mcp');
+
+    if (isMCPRequest) {
+        return handleMCPRequest(req, res);
+    } else {
+        return handleRESTRequest(req, res);
+    }
+});
+
+// Create HTTP server
+const server = http.createServer(app);
+
+// Function to find an available port
+const findAvailablePort = (startPort, maxAttempts = 10) => {
+    return new Promise((resolve, reject) => {
+        let currentPort = startPort;
+        let attempts = 0;
+
+        const tryPort = (port) => {
+            const testServer = http.createServer();
+            testServer.once('error', (err) => {
+                if (err.code === 'EADDRINUSE') {
+                    testServer.close();
+                    if (attempts < maxAttempts) {
+                        attempts++;
+                        tryPort(port + 1);
+                    } else {
+                        reject(new Error(`Could not find available port after ${maxAttempts} attempts`));
+                    }
+                } else {
+                    reject(err);
+                }
+            });
+
+            testServer.once('listening', () => {
+                const foundPort = testServer.address().port;
+                testServer.close(() => {
+                    resolve(foundPort);
+                });
+            });
+
+            testServer.listen(port);
+        };
+
+        tryPort(currentPort);
+    });
+};
+
+// Start the server with port detection
+const startServer = async () => {
+    try {
+        // Get desired port from env or use default
+        const desiredPort = process.env.PORT || 3000;
+
+        // Try to find an available port
+        const port = await findAvailablePort(desiredPort);
+
+        // Start server on the available port
+        server.listen(port, () => {
+            console.error(`HN Companion MCP server running on port ${port}`);
+        });
+    } catch (error) {
+        console.error(`Failed to start server: ${error.message}`);
+        process.exit(1);
+    }
+};
+
+// Start the server
+startServer();
+
+// Handle process termination
+process.on('SIGINT', () => {
+    console.error('Received SIGINT, shutting down server');
+    server.close(() => {
+        process.exit(0);
     });
 });
 
-// Start the server
-app.listen(port, () => {
-    console.log(`HN Companion MCP server running on port ${port}`);
+process.on('SIGTERM', () => {
+    console.error('Received SIGTERM, shutting down server');
+    server.close(() => {
+        process.exit(0);
+    });
 });
