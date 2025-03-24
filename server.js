@@ -35,7 +35,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: "get_hn_post_formatted_comments",
-                description: "Retrieves and formats comments from a Hacker News discussion post for summarization by an LLM. Use the `hacker_news_summarization_system_prompt` and `hacker_news_summarization_user_prompt` prompts to generate a summary.",
+                description: "Retrieves and formats comments from a Hacker News discussion post for summarization by an LLM. Use the `hacker_news_summarization_user_prompt` prompts to generate a summary.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -51,7 +51,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {
                         content: {
                             type: "array",
-                            description: "Contains the formatted comments and post title -  Use the `hacker_news_summarization_system_prompt` and `hacker_news_summarization_user_prompt` prompts to generate a summary."
+                            description: "Contains the formatted comments and post title -  Use the `hacker_news_summarization_user_prompt` prompts to generate a summary."
                         },
                         metadata: {
                             type: "object",
@@ -93,13 +93,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         content: [
                             {
                                 type: "text",
-                                text: String(formattedComments),
-                                description: "The formatted comments from the Hacker News post. Use the `hacker_news_summarization_system_prompt` and `hacker_news_summarization_user_prompt` prompts to generate a summary."
+                                text: String(postResponseData.post.title),
+                                description: "postTitle - The title of the Hacker News post"
                             },
                             {
                                 type: "text",
-                                text: String(postResponseData.post.title),
-                                description: "The title of the Hacker News post"
+                                text: String(formattedComments),
+                                description: "'formattedComments' - The formatted comments from the Hacker News post. Use the `hacker_news_summarization_user_prompt` prompts to generate a summary."
                             }
                         ],
                         metadata: {
@@ -132,10 +132,6 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
     return {
         prompts: [
             {
-                name: "hacker_news_summarization_system_prompt",
-                description: "System prompt for summarizing a Hacker News discussion post retrieved by the get_hn_post_formatted_comments tool call.",
-            },
-            {
                 name: "hacker_news_summarization_user_prompt",
                 description: "User prompt for summarizing a Hacker News discussion post retrieved by the get_hn_post_formatted_comments tool call.",
                 arguments: [
@@ -155,24 +151,12 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => {
     };
 });
 /**
- * Handler for the hacker_news_summarization_system_prompt & hacker_news_summarization_user_prompt.
+ * Handler for the hacker_news_summarization_user_prompt.
  */
 server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => {
     log(`GetPromptRequestSchema: ${request.params.name}`);
-    if (request.params.name === "hacker_news_summarization_system_prompt") {
-        return {
-            messages: [
-                {
-                    role: "assistant",
-                    content: {
-                        type: "text",
-                        text: getSystemPrompt()
-                    }
-                },
-            ]
-        };
-    }
-    else if (request.params.name === "hacker_news_summarization_user_prompt") {
+
+    if (request.params.name === "hacker_news_summarization_user_prompt") {
         const { arguments: args } = request.params;
         if (!args || !args.postTitle || !args.formattedComments) {
             throw new Error("Missing required arguments: postTitle and/or formattedComments");
@@ -183,7 +167,7 @@ server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => {
                     role: "user",
                     content: {
                         type: "text",
-                        text: getUserPrompt(String(args.postTitle), String(args.formattedComments))
+                        text: getSystemPrompt() + getUserPrompt(String(args.postTitle), String(args.formattedComments))
                     }
                 }
             ]
