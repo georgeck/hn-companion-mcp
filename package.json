@@ -5,10 +5,9 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "cli": "node dist/index.js",
-    "dev": "tsc -w"
+    "start": "node server.js",
+    "cli": "node index.js",
+    "inspector": "npx @modelcontextprotocol/inspector server.js"
   },
   "keywords": [
     "hacker-news",

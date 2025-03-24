@@ -1,238 +1,214 @@
-import express from 'express';
-import {getPostId} from './lib/utils.js';
-import {downloadPostComments} from './lib/fetch-comments.js';
-import {formatForClaude} from './lib/format-prompt.js';
-import fs from 'fs';
-import path from 'path';
-import {fileURLToPath} from 'url';
-import http from 'http';
-
-// Get the directory name of the current module
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Initialize express app
-const app = express();
-
-// Parse JSON request bodies
-app.use(express.json());
-
-// Read MCP config using absolute path
-const mcpConfigPath = path.join(__dirname, 'mcp.json');
-const mcpConfig = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf8'));
-
-// Handle stdout/stderr pipe when running under MCP
-const isRunningUnderMCP = process.env.MCP_SERVER_NAME;
-if (isRunningUnderMCP) {
-    console.log = (...args) => process.stdout.write(JSON.stringify({
-        jsonrpc: "2.0", method: "log", params: {message: args.join(' ')}
-    }) + '\\n');
-    console.error = (...args) => process.stderr.write(args.join(' ') + '\\n');
+import { getPostId } from './lib/utils.js';
+import { downloadPostComments } from './lib/fetch-comments.js';
+import { getSystemPrompt, getUserPrompt } from './lib/format-prompt.js';
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema, ListPromptsRequestSchema, GetPromptRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
+const DEBUG = process.env.DEBUG === 'true';
+function log(message, data) {
+    if (DEBUG) {
+        console.error(`[${new Date().toISOString()}] ${message}`, data || '');
+    }
 }
-
-// Separate handlers for the MCP protocol routes vs. the REST API routes
-const handleRESTRequest = async (req, res) => {
-    // Regular REST API routes
-    if (req.path === '/health') {
-        return res.json({status: 'ok'});
-    }
-
-    if (req.path === '/api/summarize' && req.method === 'POST') {
-        try {
-            const {input} = req.body;
-
-            if (!input) {
-                return res.status(400).json({error: 'Missing input parameter'});
-            }
-
-            const postId = getPostId(input);
-
-            if (!postId) {
-                return res.status(400).json({
-                    error: 'Invalid input. Please provide a valid Hacker News post ID or URL'
-                });
-            }
-
-            // Download and process comments
-            const {post, postComments} = await downloadPostComments(postId);
-
-            // Format data for Claude
-            const formattedData = formatForClaude(post, postComments);
-
-            return res.json({
-                status: 'success', data: formattedData
-            });
-        } catch (error) {
-            console.error(`Error processing REST request: ${error.message}`);
-            return res.status(500).json({
-                error: 'Failed to process request', message: error.message
-            });
-        }
-    }
-
-    // Default route for REST API
-    return res.status(404).json({error: 'Not found'});
-};
-
-const handleMCPRequest = async (req, res) => {
-    try {
-        const rpcRequest = req.body;
-        console.error(`Received RPC request: ${JSON.stringify(rpcRequest)}`);
-
-        if (rpcRequest.method === 'initialize') {
-            // Handle initialize method
-            return res.json({
-                jsonrpc: '2.0', id: rpcRequest.id, result: {
-                    capabilities: {}, serverInfo: {
-                        name: mcpConfig.name, version: mcpConfig.version
+/**
+ * Create an MCP server that can fetch HN discussions and format it for summarization.
+ * HN post ID or URL is passed as input to the server.
+ * The server fetches the post and comments, formats the data, and outputs it for Claude to summarize.
+ * The MCP also returns a system prompt and user prompt for Claude to use.
+ */
+const server = new Server({
+    name: "HackerNews companion MCP server",
+    version: "0.1.0",
+}, {
+    capabilities: {
+        tools: {},
+        prompts: {},
+    },
+});
+/**
+ * Handler that lists available tools.
+ * Exposes the "get_hn_post_formatted_comments" tool that lets clients retrieve formatted HN post comments.
+ */
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+    log(`ListToolsRequestSchema`);
+    return {
+        tools: [
+            {
+                name: "get_hn_post_formatted_comments",
+                description: "Retrieves and formats comments from a Hacker News discussion post for summarization by an LLM. Returns both the post title and structured comments with hierarchical organization.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        post_url: {
+                            type: "string",
+                            description: "The URL or ID for the Hacker News post to analyze. Can be a full URL (https://news.ycombinator.com/item?id=43456723) or just the numeric post ID.",
+                        }
+                    },
+                    required: ["post_url"],
+                },
+                outputSchema: {
+                    type: "object",
+                    properties: {
+                        content: {
+                            type: "array",
+                            description: "Contains the formatted comments and post title"
+                        },
+                        metadata: {
+                            type: "object",
+                            description: "Contains post ID, comment count, and original post URL"
+                        }
                     }
                 }
-            });
-        } else if (rpcRequest.method === 'invoke') {
-            // Handle invoke method for summarize endpoint
-            const {endpoint, params} = rpcRequest.params;
-
-            if (endpoint !== 'summarize') {
-                return res.json({
-                    jsonrpc: '2.0', id: rpcRequest.id, error: {
-                        code: -32601, message: `Endpoint '${endpoint}' not found`
-                    }
-                });
             }
-
-            const {input} = params;
-            if (!input) {
-                return res.json({
-                    jsonrpc: '2.0', id: rpcRequest.id, error: {
-                        code: -32602, message: 'Missing required parameter: input'
-                    }
-                });
+        ]
+    };
+});
+/**
+ * Handler for the get_hn_post_formatted_comments tool.
+ * Returns the HN Post comments formatted for summarization.
+ */
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    log(`CallToolRequestSchema: ${request.params.name}`);
+    switch (request.params.name) {
+        case "get_hn_post_formatted_comments":
+            {
+                const post_url = String(request.params.arguments?.post_url).trim();
+                if (!post_url) {
+                    throw new Error("PostURL is required");
+                }
+                const postId = getPostId(post_url);
+                if (!postId) {
+                    throw new Error("Invalid post URL");
+                }
+                log(`Fetching comments for post ID: ${postId}`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+                try {
+                    const postResponseData = await downloadPostComments(postId);
+                    let formattedComments = '';
+                    postResponseData.postComments.forEach(comment => {
+                        formattedComments += `[${comment.path}] (score: ${comment.score}) <replies: ${comment.replies}> {downvotes: ${comment.downvotes}} ${comment.author}: ${comment.text}\n`;
+                    });
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: String(formattedComments),
+                                description: "The formatted comments from the Hacker News post"
+                            },
+                            {
+                                type: "text",
+                                text: String(postResponseData.post.title),
+                                description: "The title of the Hacker News post"
+                            }
+                        ],
+                        metadata: {
+                            postId: postId,
+                            commentCount: postResponseData.postComments.length,
+                            postUrl: `https://news.ycombinator.com/item?id=${postId}`
+                        }
+                    };
+                }
+                catch (error) {
+                    console.error("Error downloading comments:", error);
+                    throw new Error(`Failed to download comment post: ${error.message}`);
+                }
+                finally {
+                    clearTimeout(timeoutId);
+                    controller.abort();
+                }
             }
-
-            const postId = getPostId(input);
-            if (!postId) {
-                return res.json({
-                    jsonrpc: '2.0', id: rpcRequest.id, error: {
-                        code: -32602, message: 'Invalid input. Please provide a valid Hacker News post ID or URL'
-                    }
-                });
-            }
-
-            console.error(`Processing HN post ID: ${postId}`);
-
-            // Download and process comments
-            const {post, postComments} = await downloadPostComments(postId);
-
-            console.error(`Downloaded post "${post.title}" with ${postComments.size} comments`);
-
-            // Format data for Claude
-            const formattedData = formatForClaude(post, postComments);
-
-            return res.json({
-                jsonrpc: '2.0', id: rpcRequest.id, result: formattedData
-            });
-        }
-
-        // Return error for unknown methods
-        return res.json({
-            jsonrpc: '2.0', id: rpcRequest.id || null, error: {
-                code: -32601, message: 'Method not found'
-            }
-        });
-    } catch (error) {
-        console.error(`Error processing MCP request: ${error.message}`);
-        return res.json({
-            jsonrpc: '2.0', id: req.body?.id || null, error: {
-                code: -32603, message: `Internal error: ${error.message}`
-            }
-        });
-    }
-};
-
-// Route handler based on content type and headers
-app.use((req, res, next) => {
-    // Check if this is an MCP request (JSON-RPC)
-    const isMCPRequest = req.headers['content-type'] === 'application/json' && (req.path === '/' || req.path === '/mcp');
-
-    if (isMCPRequest) {
-        return handleMCPRequest(req, res);
-    } else {
-        return handleRESTRequest(req, res);
+            break;
+        default:
+            throw new Error("Unknown tool");
     }
 });
-
-// Create HTTP server
-const server = http.createServer(app);
-
-// Function to find an available port
-const findAvailablePort = (startPort, maxAttempts = 10) => {
-    return new Promise((resolve, reject) => {
-        let currentPort = startPort;
-        let attempts = 0;
-
-        const tryPort = (port) => {
-            const testServer = http.createServer();
-            testServer.once('error', (err) => {
-                if (err.code === 'EADDRINUSE') {
-                    testServer.close();
-                    if (attempts < maxAttempts) {
-                        attempts++;
-                        tryPort(port + 1);
-                    } else {
-                        reject(new Error(`Could not find available port after ${maxAttempts} attempts`));
+/**
+ * Handler that lists available prompts.
+ * Exposes a system prompt and user prompt for summarization.
+ */
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    log(`ListPromptsRequestSchema`);
+    return {
+        prompts: [
+            {
+                name: "hacker_news_summarization_system_prompt",
+                description: "System prompt for summarizing a Hacker News discussion post retrieved by the get_hn_post_formatted_comments tool call.",
+            },
+            {
+                name: "hacker_news_summarization_user_prompt",
+                description: "User prompt for summarizing a Hacker News discussion post retrieved by the get_hn_post_formatted_comments tool call.",
+                arguments: [
+                    {
+                        name: "postTitle",
+                        type: "string",
+                        description: "The title of the Hacker News post"
+                    },
+                    {
+                        name: "formattedComments",
+                        type: "string",
+                        description: "The formatted comments from the Hacker News post as returned by the get_hn_post_formatted_comments tool call"
                     }
-                } else {
-                    reject(err);
-                }
-            });
-
-            testServer.once('listening', () => {
-                const foundPort = testServer.address().port;
-                testServer.close(() => {
-                    resolve(foundPort);
-                });
-            });
-
-            testServer.listen(port);
+                ]
+            }
+        ]
+    };
+});
+/**
+ * Handler for the hacker_news_summarization_system_prompt & hacker_news_summarization_user_prompt.
+ */
+server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => {
+    log(`GetPromptRequestSchema: ${request.params.name}`);
+    if (request.params.name === "hacker_news_summarization_system_prompt") {
+        return {
+            messages: [
+                {
+                    role: "assistant",
+                    content: {
+                        type: "text",
+                        text: getSystemPrompt()
+                    }
+                },
+            ]
         };
-
-        tryPort(currentPort);
-    });
-};
-
-// Start the server with port detection
-const startServer = async () => {
-    try {
-        // Get desired port from env or use default
-        const desiredPort = process.env.PORT || 3000;
-
-        // Try to find an available port
-        const port = await findAvailablePort(desiredPort);
-
-        // Start server on the available port
-        server.listen(port, () => {
-            console.error(`HN Companion MCP server running on port ${port}`);
-        });
-    } catch (error) {
-        console.error(`Failed to start server: ${error.message}`);
-        process.exit(1);
     }
-};
-
-// Start the server
-startServer();
-
-// Handle process termination
+    else if (request.params.name === "hacker_news_summarization_user_prompt") {
+        const { arguments: args } = request.params;
+        if (!args || !args.postTitle || !args.formattedComments) {
+            throw new Error("Missing required arguments: postTitle and/or formattedComments");
+        }
+        return {
+            messages: [
+                {
+                    role: "user",
+                    content: {
+                        type: "text",
+                        text: getUserPrompt(String(args.postTitle), String(args.formattedComments))
+                    }
+                }
+            ]
+        };
+    }
+    else {
+        throw new Error(`Unknown prompt: ${request.params.name}`);
+    }
+});
+/**
+ * Start the server using stdio transport.
+ * This allows the server to communicate via standard input/output streams.
+ */
+async function main() {
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+}
+main().catch((error) => {
+    console.error("Server error:", error);
+    process.exit(1);
+});
 process.on('SIGINT', () => {
-    console.error('Received SIGINT, shutting down server');
-    server.close(() => {
-        process.exit(0);
-    });
+    process.exit(0);
 });
-
 process.on('SIGTERM', () => {
-    console.error('Received SIGTERM, shutting down server');
-    server.close(() => {
-        process.exit(0);
-    });
+    process.exit(0);
 });
+//# sourceMappingURL=server.js.map
