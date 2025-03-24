@@ -51,7 +51,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {
                         content: {
                             type: "array",
-                            description: "Contains the formatted comments and post title -  Use the `hacker_news_summarization_user_prompt` prompts to generate a summary."
+                            description: "Contains the formatted comments ('formattedComments') and post title ('postTitle') - Use the `hacker_news_summarization_user_prompt` prompts with 'formattedComments' and 'postTitle' to generate a summary."
                         },
                         metadata: {
                             type: "object",
