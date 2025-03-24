@@ -4,12 +4,14 @@ import { getSystemPrompt, getUserPrompt } from './lib/format-prompt.js';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, ListPromptsRequestSchema, GetPromptRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
+
 const DEBUG = process.env.DEBUG === 'true';
 function log(message, data) {
     if (DEBUG) {
         console.error(`[${new Date().toISOString()}] ${message}`, data || '');
     }
 }
+
 /**
  * Create an MCP server that can fetch HN discussions and format it for summarization.
  * HN post ID or URL is passed as input to the server.
@@ -21,8 +23,7 @@ const server = new Server({
     version: "0.1.0",
 }, {
     capabilities: {
-        tools: {},
-        prompts: {},
+        tools: {}
     },
 });
 /**
@@ -82,7 +83,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 }
                 log(`Fetching comments for post ID: ${postId}`);
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+                const timeoutId = setTimeout(() => controller.abort(), 30_000); // 30 seconds timeout
                 try {
                     const postResponseData = await downloadPostComments(postId);
                     let formattedComments = '';
@@ -123,60 +124,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             throw new Error("Unknown tool");
     }
 });
-/**
- * Handler that lists available prompts.
- * Exposes a system prompt and user prompt for summarization.
- */
-server.setRequestHandler(ListPromptsRequestSchema, async () => {
-    log(`ListPromptsRequestSchema`);
-    return {
-        prompts: [
-            {
-                name: "hacker_news_summarization_user_prompt",
-                description: "User prompt for summarizing a Hacker News discussion post retrieved by the get_hn_post_formatted_comments tool call.",
-                arguments: [
-                    {
-                        name: "postTitle",
-                        type: "string",
-                        description: "The title of the Hacker News post"
-                    },
-                    {
-                        name: "formattedComments",
-                        type: "string",
-                        description: "The formatted comments from the Hacker News post as returned by the get_hn_post_formatted_comments tool call"
-                    }
-                ]
-            }
-        ]
-    };
-});
-/**
- * Handler for the hacker_news_summarization_user_prompt.
- */
-server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => {
-    log(`GetPromptRequestSchema: ${request.params.name}`);
 
-    if (request.params.name === "hacker_news_summarization_user_prompt") {
-        const { arguments: args } = request.params;
-        if (!args || !args.postTitle || !args.formattedComments) {
-            throw new Error("Missing required arguments: postTitle and/or formattedComments");
-        }
-        return {
-            messages: [
-                {
-                    role: "user",
-                    content: {
-                        type: "text",
-                        text: getSystemPrompt() + getUserPrompt(String(args.postTitle), String(args.formattedComments))
-                    }
-                }
-            ]
-        };
-    }
-    else {
-        throw new Error(`Unknown prompt: ${request.params.name}`);
-    }
-});
 /**
  * Start the server using stdio transport.
  * This allows the server to communicate via standard input/output streams.
