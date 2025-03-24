@@ -1,18 +1,33 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
 # Logs
-logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
 
 # Runtime data
 pids
 *.pid
 *.seed
 *.pid.lock
-
-# Dependency directories
-node_modules/
 
 # Optional npm cache directory
 .npm
@@ -22,13 +37,6 @@ node_modules/
 
 # Output of 'npm pack'
 *.tgz
-
-# dotenv environment variable files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 
 # OS files
 .DS_Store
