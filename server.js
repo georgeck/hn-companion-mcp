@@ -51,7 +51,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {
                         content: {
                             type: "array",
-                            description: "Contains the formatted comments ('formattedComments') and post title ('postTitle') - Use the `hacker_news_summarization_user_prompt` prompts with 'formattedComments' and 'postTitle' to generate a summary."
+                            description: "Contains the formatted comments ('formattedComments') and user prompt ('userPrompt') - Follow the instructions in the `userPrompt` on interpreting the formatted comments.",
                         },
                         metadata: {
                             type: "object",
@@ -93,13 +93,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         content: [
                             {
                                 type: "text",
-                                text: String(postResponseData.post.title),
-                                description: "postTitle - The title of the Hacker News post"
+                                text: String(formattedComments),
+                                description: "'formattedComments' - Formatted comments for post ID",
                             },
                             {
                                 type: "text",
-                                text: String(formattedComments),
-                                description: "'formattedComments' - The formatted comments from the Hacker News post. Use the `hacker_news_summarization_user_prompt` prompts to generate a summary."
+                                text: getSystemPrompt(),
+                                description: "'userPrompt' - Follow the instructions in the `userPrompt` on interpreting the 'formattedComments' data."
                             }
                         ],
                         metadata: {
