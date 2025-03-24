@@ -41,7 +41,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {
                         post_url: {
                             type: "string",
-                            description: "The URL or ID for the Hacker News post to analyze. Can be a full URL (https://news.ycombinator.com/item?id=43456723) or just the numeric post ID.",
+                            description: "The URL or ID for the Hacker News post to analyze. Can be a full URL (https://news.ycombinator.com/item?id=43456723) or just the numeric post ID e.g. 43456723.",
                         }
                     },
                     required: ["post_url"],
@@ -55,7 +55,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         },
                         metadata: {
                             type: "object",
-                            description: "Contains post ID, comment count, and original post URL"
+                            description: "Contains post ID (postId), comment count (commentCount), and original post URL (postUrl)."
                         }
                     }
                 }
