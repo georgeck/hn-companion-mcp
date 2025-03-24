@@ -35,7 +35,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: "get_hn_post_formatted_comments",
-                description: "Retrieves and formats comments from a Hacker News discussion post for summarization by an LLM. Returns both the post title and structured comments with hierarchical organization.",
+                description: "Retrieves and formats comments from a Hacker News discussion post for summarization by an LLM. Use the `hacker_news_summarization_system_prompt` and `hacker_news_summarization_user_prompt` prompts to generate a summary.",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -51,7 +51,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     properties: {
                         content: {
                             type: "array",
-                            description: "Contains the formatted comments and post title"
+                            description: "Contains the formatted comments and post title -  Use the `hacker_news_summarization_system_prompt` and `hacker_news_summarization_user_prompt` prompts to generate a summary."
                         },
                         metadata: {
                             type: "object",
@@ -94,7 +94,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                             {
                                 type: "text",
                                 text: String(formattedComments),
-                                description: "The formatted comments from the Hacker News post"
+                                description: "The formatted comments from the Hacker News post. Use the `hacker_news_summarization_system_prompt` and `hacker_news_summarization_user_prompt` prompts to generate a summary."
                             },
                             {
                                 type: "text",
