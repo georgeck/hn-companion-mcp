@@ -10,15 +10,20 @@ async function main() {
             console.error('Please provide a Hacker News post ID or URL');
             process.exit(1);
         }
+
         const postId = getPostId(input);
         if (!postId) {
             console.error('Invalid input. Please provide a valid Hacker News post ID or URL');
             process.exit(1);
         }
+
         console.log(`Processing Hacker News post ID: ${postId}`);
+
         // Download and process comments
         const { post, postComments } = await downloadPostComments(postId);
+
         console.log(`Downloaded post "${post.title}" with ${postComments.length} comments`);
+
         // Format data for Claude
         const formattedData = formatForClaude(post, postComments);
         // Output the formatted data
