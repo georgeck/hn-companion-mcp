@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'url';
 import http from 'http';
+import { MCPServer } from '@modelcontextprotocol/sdk'; // Import MCP SDK
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -26,8 +27,8 @@ const isRunningUnderMCP = process.env.MCP_SERVER_NAME;
 if (isRunningUnderMCP) {
     console.log = (...args) => process.stdout.write(JSON.stringify({
         jsonrpc: "2.0", method: "log", params: {message: args.join(' ')}
-    }) + '\\n');
-    console.error = (...args) => process.stderr.write(args.join(' ') + '\\n');
+    }) + '\n');
+    console.error = (...args) => process.stderr.write(args.join(' ') + '\n');
 }
 
 // Separate handlers for the MCP protocol routes vs. the REST API routes
@@ -74,80 +75,32 @@ const handleRESTRequest = async (req, res) => {
     return res.status(404).json({error: 'Not found'});
 };
 
-const handleMCPRequest = async (req, res) => {
-    try {
-        const rpcRequest = req.body;
-        console.error(`Received RPC request: ${JSON.stringify(rpcRequest)}`);
+// Initialize MCP server
+const mcpServer = new MCPServer(mcpConfig);
 
-        if (rpcRequest.method === 'initialize') {
-            // Handle initialize method
-            return res.json({
-                jsonrpc: '2.0', id: rpcRequest.id, result: {
-                    capabilities: {}, serverInfo: {
-                        name: mcpConfig.name, version: mcpConfig.version
-                    }
-                }
-            });
-        } else if (rpcRequest.method === 'invoke') {
-            // Handle invoke method for summarize endpoint
-            const {endpoint, params} = rpcRequest.params;
-
-            if (endpoint !== 'summarize') {
-                return res.json({
-                    jsonrpc: '2.0', id: rpcRequest.id, error: {
-                        code: -32601, message: `Endpoint '${endpoint}' not found`
-                    }
-                });
-            }
-
-            const {input} = params;
-            if (!input) {
-                return res.json({
-                    jsonrpc: '2.0', id: rpcRequest.id, error: {
-                        code: -32602, message: 'Missing required parameter: input'
-                    }
-                });
-            }
-
-            const postId = getPostId(input);
-            if (!postId) {
-                return res.json({
-                    jsonrpc: '2.0', id: rpcRequest.id, error: {
-                        code: -32602, message: 'Invalid input. Please provide a valid Hacker News post ID or URL'
-                    }
-                });
-            }
-
-            console.error(`Processing HN post ID: ${postId}`);
-
-            // Download and process comments
-            const {post, postComments} = await downloadPostComments(postId);
-
-            console.error(`Downloaded post "${post.title}" with ${postComments.size} comments`);
-
-            // Format data for Claude
-            const formattedData = formatForClaude(post, postComments);
-
-            return res.json({
-                jsonrpc: '2.0', id: rpcRequest.id, result: formattedData
-            });
-        }
-
-        // Return error for unknown methods
-        return res.json({
-            jsonrpc: '2.0', id: rpcRequest.id || null, error: {
-                code: -32601, message: 'Method not found'
-            }
-        });
-    } catch (error) {
-        console.error(`Error processing MCP request: ${error.message}`);
-        return res.json({
-            jsonrpc: '2.0', id: req.body?.id || null, error: {
-                code: -32603, message: `Internal error: ${error.message}`
-            }
-        });
+mcpServer.on('summarize', async (params) => {
+    const { input } = params;
+    if (!input) {
+        throw new Error('Missing required parameter: input');
     }
-};
+
+    const postId = getPostId(input);
+    if (!postId) {
+        throw new Error('Invalid input. Please provide a valid Hacker News post ID or URL');
+    }
+
+    console.error(`Processing HN post ID: ${postId}`);
+
+    // Download and process comments
+    const { post, postComments } = await downloadPostComments(postId);
+
+    console.error(`Downloaded post "${post.title}" with ${postComments.size} comments`);
+
+    // Format data for Claude
+    const formattedData = formatForClaude(post, postComments);
+
+    return formattedData;
+});
 
 // Route handler based on content type and headers
 app.use((req, res, next) => {
@@ -155,7 +108,7 @@ app.use((req, res, next) => {
     const isMCPRequest = req.headers['content-type'] === 'application/json' && (req.path === '/' || req.path === '/mcp');
 
     if (isMCPRequest) {
-        return handleMCPRequest(req, res);
+        return mcpServer.handleRequest(req, res);
     } else {
         return handleRESTRequest(req, res);
     }
