@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
+    "start:sse": "node server.js --sse --port 3001",
+    "start:sse:debug": "DEBUG=true node server.js --sse --port 3001",
     "cli": "node index.js",
     "inspector": "npx @modelcontextprotocol/inspector server.js"
   },
