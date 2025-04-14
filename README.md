@@ -1,4 +1,5 @@
 # Hacker News Companion MCP
+[![smithery badge](https://smithery.ai/badge/@georgeck/hn-companion-mcp)](https://smithery.ai/server/@georgeck/hn-companion-mcp)
 
 A Model Context Protocol (MCP) for summarizing Hacker News discussions using Claude.
 
@@ -14,6 +15,16 @@ This MCP fetches and processes Hacker News discussions, preparing them in a form
 - Format data optimized for Claude's summarization
 
 ## Installation
+
+### Installing via Smithery
+
+To install Hacker News Companion for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@georgeck/hn-companion-mcp):
+
+```bash
+npx -y @smithery/cli install @georgeck/hn-companion-mcp --client claude
+```
+
+### Manual Installation
 
 1. Clone the repository:
    ```
