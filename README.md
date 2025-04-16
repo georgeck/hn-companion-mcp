@@ -1,6 +1,10 @@
 # Hacker News Companion MCP
 [![smithery badge](https://smithery.ai/badge/@georgeck/hn-companion-mcp)](https://smithery.ai/server/@georgeck/hn-companion-mcp)
 
+<a href="https://glama.ai/mcp/servers/@georgeck/hn-companion-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@georgeck/hn-companion-mcp/badge" alt="Hacker News Companion MCP server" />
+</a>
+
 A Model Context Protocol (MCP) for summarizing Hacker News discussions using Claude.
 
 ## Overview
@@ -104,7 +108,6 @@ Claude can call this MCP to get the formatted data and then generate a summary b
     }
   }
 ```
-
 
 ## License
 
