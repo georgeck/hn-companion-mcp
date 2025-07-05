@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/georgeck-hn-companion-mcp-badge.png)](https://mseep.ai/app/georgeck-hn-companion-mcp)
+
 # Hacker News Companion MCP
 [![smithery badge](https://smithery.ai/badge/@georgeck/hn-companion-mcp)](https://smithery.ai/server/@georgeck/hn-companion-mcp)
 
